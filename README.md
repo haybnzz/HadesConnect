@@ -153,9 +153,9 @@ Please ensure all usage complies with applicable laws and regulations.
 1. **Clone or Download the Repository**:
    - Clone the repository using Git:
      ```bash
-     git clone https://github.com/haydenbanz/HadesConnect.git
+     git clone https://github.com/haybnzz/HadesConnect.git
      ```
-   - Alternatively, download the repository from [HadesConnect download](https://github.com/haydenbanz/HadesConnect/archive/refs/heads/main.zip).
+   - Alternatively, download the repository from [HadesConnect download](https://github.com/haybnzz/HadesConnect/archive/refs/heads/main.zip).
 
 2. **Navigate to the Directory**:
    - Open a terminal or command prompt.
