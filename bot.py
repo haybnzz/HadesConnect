@@ -4,13 +4,17 @@ from discord.ext import commands
 import requests
 import socket
 import datetime
-import os
+import winreg
+import pyautogui
+import osimport os
 import sys
 import ctypes
 import asyncio
 import subprocess
-import winreg
-import pyautogui
+import sys
+import ctypes
+import asyncio
+import subprocess
 from io import BytesIO
 import sounddevice as sd
 import soundfile as sf
